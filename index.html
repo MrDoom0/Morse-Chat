@@ -97,7 +97,6 @@
             <button onclick="sendMessage()" style="flex:1.5; background:var(--primary); color:var(--bg); border:none; border-radius:12px; font-weight:bold; font-size:1rem; font-family:'Outfit';" data-key="btn_send">SEND</button>
         </div>
     </div>
-
     <script>
         const i18n = {
             en: {
@@ -143,9 +142,16 @@
 
         window.addEventListener('load', () => {
             updateUI();
-            setTimeout(() => ting(), 800);
-            setTimeout(() => document.getElementById('splash-screen').style.display = 'none', 2000);
+            setTimeout(() => { document.getElementById('splash-screen').style.display = 'none'; }, 2000);
         });
+
+        // This fixes the sound on live websites
+        window.addEventListener('click', () => {
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+                ting();
+            }
+        }, { once: true });
 
         function ting() {
             let o = audioCtx.createOscillator(); let g = audioCtx.createGain();
@@ -298,7 +304,6 @@
             document.getElementById('nav-' + id).classList.add('active-nav');
             document.getElementById('input-panel').style.display = (id === 'chat') ? 'block' : 'none';
         }
-        function copyToClipboard(t) { navigator.clipboard.writeText(t); alert("Copied!"); }
 
         async function playMorse(m) {
             const d = 60; for (let c of m) {
@@ -315,8 +320,12 @@
             g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + d/1000);
             o.stop(audioCtx.currentTime + d/1000);
         }
-        function tap(c) { document.getElementById('ui-input').value += c; beep(60); doTranslate(); }
+        function tap(c) { 
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            document.getElementById('ui-input').value += c; 
+            beep(60); 
+            doTranslate(); 
+        }
     </script>
 </body>
 </html>
-
