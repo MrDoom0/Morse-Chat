@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Morse Chat</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        :root { --primary: #577399; --bg: #F7F9FB; --card: #FFFFFF; --text: #495867; --accent: #BDD5EA; --mod: #fca311; --err: #e63946; --border: #BDD5EA; }
+        [data-theme="dark"] { --primary: #BDD5EA; --bg: #1A1A1D; --card: #2C2C2E; --text: #E1E1E1; --accent: #495867; --mod: #ffb703; --err: #ff4d6d; --border: #444; }
+        
+        body { margin: 0; background: var(--bg); color: var(--text); font-family: 'Outfit', sans-serif; height: 100vh; display: flex; flex-direction: column; overflow: hidden; transition: 0.3s; }
+        body.rtl { direction: rtl; }
+
+        #splash-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 1000; overflow: hidden; }
+        .splash-text { font-family: 'Outfit', sans-serif; font-size: 2.8rem; font-weight: 700; color: var(--primary); position: absolute; animation: smooth-slide 2s ease-in-out forwards; }
+        @keyframes smooth-slide { 0% { transform: translateY(-100vh); } 40% { transform: translateY(0); } 60% { transform: translateY(0); } 100% { transform: translateY(100vh); } }
+
+        nav { display: flex; background: var(--card); border-bottom: 1px solid var(--border); justify-content: space-around; padding: 10px; z-index: 10; }
+        nav button { background: none; border: none; font-size: 0.9rem; font-weight: 600; color: var(--primary); opacity: 0.5; cursor: pointer; font-family: 'Outfit'; }
+        nav button.active-nav { opacity: 1; border-bottom: 2px solid var(--primary); }
+        
+        main { flex: 1; padding: 15px; overflow-y: auto; padding-bottom: 320px; }
+        section { display: none; } section.active { display: block; }
+        
+        .panel { background: var(--card); padding: 18px; border-radius: 16px; border: 1px solid var(--border); margin-bottom: 15px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        .room-entry { background: var(--bg); padding: 15px; border-radius: 14px; border: 1px solid var(--border); margin-top: 12px; }
+        .badge { font-size: 0.65rem; padding: 4px 10px; border-radius: 6px; font-weight: bold; text-transform: uppercase; margin-bottom: 8px; display: inline-block; }
+        .badge-host { background: var(--mod); color: #000; }
+        .badge-guest { background: var(--primary); color: var(--bg); }
+        
+        .key-tag { font-family: monospace; background: var(--accent); color: var(--primary); padding: 2px 6px; border-radius: 4px; font-weight: bold; }
+        .chat-container { background: var(--card); border-radius: 16px; height: 380px; overflow-y: auto; padding: 15px; border: 1px solid var(--border); }
+        .msg { margin-bottom: 12px; padding: 12px; border-radius: 12px; background: var(--bg); border-left: 4px solid var(--primary); text-align: left; }
+        body.rtl .msg { border-left: none; border-right: 4px solid var(--primary); text-align: right; }
+
+        #input-panel { position: fixed; bottom: 0; width: 100%; background: var(--card); border-top: 1px solid var(--border); padding: 15px; box-sizing: border-box; z-index: 20; }
+        .input-field { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text); margin-bottom: 8px; box-sizing: border-box; outline: none; font-family: 'Outfit'; font-size: 1rem; }
+        .toolbar { display: flex; gap: 8px; }
+        .tool-btn { flex: 1; height: 55px; border: none; background: var(--accent); color: var(--primary); border-radius: 12px; font-weight: bold; font-size: 1.2rem; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div id="splash-screen"><div class="splash-text">Morse Chat</div></div>
+    <nav>
+        <button id="nav-lobby" class="active-nav" onclick="showSection('lobby')" data-key="nav_lobby">Lobby</button>
+        <button id="nav-chat" onclick="showSection('chat')" data-key="nav_chat">Active Chat</button>
+        <button id="nav-settings" onclick="showSection('settings')" data-key="nav_profile">Profile</button>
+    </nav>
+    <main>
+        <section id="lobby" class="active">
+            <div class="panel">
+                <h3 data-key="host_title">Host</h3>
+                <input type="text" id="room-name" class="input-field" data-ph="ph_room_name" placeholder="Channel Name">
+                <select id="room-policy" class="input-field">
+                    <option value="MULTI" data-key="opt_multi">Multilingual</option>
+                    <option value="EN" data-key="opt_en">English Only</option>
+                    <option value="AR" data-key="opt_ar">Arabic Only</option>
+                </select>
+                <button onclick="createNewRoom()" style="width:100%; padding:14px; background:var(--primary); color:var(--bg); border:none; border-radius:12px; font-weight:bold; font-family:'Outfit';" data-key="btn_host">START HOSTING</button>
+            </div>
+            <div class="panel">
+                <h3 data-key="join_title">Join</h3>
+                <input type="text" id="join-peer-id" class="input-field" data-ph="ph_peer_id" placeholder="Host Peer ID">
+                <input type="text" id="join-room-key" class="input-field" data-ph="ph_key" placeholder="6-Digit Key">
+                <button id="join-btn" onclick="joinRemoteRoom()" style="width:100%; padding:14px; background:var(--accent); color:var(--primary); border:none; border-radius:12px; font-weight:bold; font-family:'Outfit';" data-key="btn_connect">CONNECT</button>
+            </div>
+            <div id="my-channels"><h3 style="margin:20px 0 10px 0;" data-key="rooms_title">Active Rooms</h3></div>
+        </section>
+        <section id="chat">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <div><b id="active-room-info" style="font-size:1.2rem; color:var(--primary);">Lobby</b><br><small id="active-room-key-display" style="opacity:0.6;">Key: ------</small></div>
+                <div id="policy-indicator" class="badge">--</div>
+            </div>
+            <div id="chat-box" class="chat-container"></div>
+        </section>
+        <section id="settings">
+            <div class="panel">
+                <h3 data-key="settings_title">Settings</h3>
+                <button onclick="toggleTheme()" class="input-field" style="background:none; color:var(--primary); font-weight:bold;" data-key="btn_theme">🌓 Switch Theme</button>
+                <button onclick="toggleUILang()" class="input-field" style="background:var(--accent); color:var(--primary); font-weight:bold; border:none;" data-key="btn_lang">🌐 Language</button>
+                <hr style="margin:20px 0; border:0; border-top:1px solid var(--border);">
+                <label data-key="label_nick">Nickname</label>
+                <input type="text" id="user-nickname" class="input-field" placeholder="Yaz">
+                <p style="font-size:0.8rem;"><span data-key="label_id">Your Peer ID:</span> <b id="display-my-id" style="color:var(--mod);">...</b></p>
+            </div>
+        </section>
+    </main>
+    <div id="input-panel" style="display:none;">
+        <div id="preview-box" style="text-align:center; font-size:0.75rem; margin-bottom:6px; font-weight:bold; color:var(--primary);">...</div>
+        <input type="text" id="ui-input" class="input-field" data-ph="ph_msg" placeholder="..." oninput="doTranslate()">
+        <div class="toolbar">
+            <button class="tool-btn" onclick="tap('.')">●</button>
+            <button class="tool-btn" onclick="tap('-')">▬</button>
+            <button class="tool-btn" onclick="tap(' ')">␣</button>
+            <button onclick="sendMessage()" style="flex:1.5; background:var(--primary); color:var(--bg); border:none; border-radius:12px; font-weight:bold; font-size:1rem; font-family:'Outfit';" data-key="btn_send">SEND</button>
+        </div>
+    </div>
+
+    <script>
+        const i18n = {
+            en: {
+                nav_lobby: "Lobby", nav_chat: "Active Chat", nav_profile: "Profile",
+                host_title: "Host", join_title: "Join", rooms_title: "Active Rooms",
+                ph_room_name: "Channel Name", ph_peer_id: "Host Peer ID", ph_key: "6-Digit Key", ph_msg: "Type text or Morse...",
+                opt_multi: "Multilingual", opt_en: "English Only", opt_ar: "Arabic Only",
+                btn_host: "START HOSTING", btn_connect: "CONNECT", btn_send: "SEND",
+                btn_theme: "🌓 Switch Theme", btn_lang: "🌐 Language: English",
+                settings_title: "Settings", label_nick: "Nickname", label_id: "Your Peer ID:",
+                msg_copy: "Invite link copied!", msg_lang_err: "Language blocked!", msg_connecting: "Connecting..."
+            },
+            ar: {
+                nav_lobby: "الردهة", nav_chat: "الدردشة", nav_profile: "الحساب",
+                host_title: "إنشاء غرفة", join_title: "انضمام", rooms_title: "الغرف النشطة",
+                ph_room_name: "اسم القناة", ph_peer_id: "معرف المضيف (ID)", ph_key: "رمز الدخول", ph_msg: "اكتب نصاً أو مورس...",
+                opt_multi: "متعدد اللغات", opt_en: "الإنجليزية فقط", opt_ar: "العربية فقط",
+                btn_host: "بدء الاستضافة", btn_connect: "اتصال", btn_send: "إرسال",
+                btn_theme: "🌓 تغيير المظهر", btn_lang: "🌐 اللغة: العربية",
+                settings_title: "الإعدادات", label_nick: "الاسم المستعار", label_id: "معرف الجهاز الخاص بك:",
+                msg_copy: "تم نسخ رابط الدعوة!", msg_lang_err: "اللغة محظورة في هذه الغرفة!", msg_connecting: "جاري الاتصال..."
+            }
+        };
+
+        let currentLang = localStorage.getItem('morse-lang') || 'en';
+        function updateUI() {
+            const lang = i18n[currentLang];
+            document.querySelectorAll('[data-key]').forEach(el => el.innerText = lang[el.getAttribute('data-key')]);
+            document.querySelectorAll('[data-ph]').forEach(el => el.placeholder = lang[el.getAttribute('data-ph')]);
+            document.body.classList.toggle('rtl', currentLang === 'ar');
+            localStorage.setItem('morse-lang', currentLang);
+        }
+        function toggleUILang() { currentLang = currentLang === 'en' ? 'ar' : 'en'; updateUI(); }
+
+        const LIB = {'A':'.-','B':'-...','C':'-.-.','D':'-..','E':'.','F':'..-.','G':'--.','H':'....','I':'..','J':'.---','K':'-.-','L':'.-..','M':'--','N':'-.','O':'---','P':'.--.','Q':'--.-','R':'.-.','S':'...','T':'-','U':'..-','V':'...-','W':'.--','X':'-..-','Y':'-.--','Z':'--..',' ':'/', 'ا':'.-','ب':'-...','ت':'-','ث':'-.-.','ج':'.---','ح':'....','خ':'---','د':'-..','ذ':'--..','ر':'.-.','ز':'---.','س':'...','ش':'----','ص':'-..-','ض':'...-','ط':'..-','ظ':'-.--','ع':'.-.-','غ':'--.','ف':'..-.','ق':'--.-','ك':'-.-','ل':'.-..','م':'--','ن':'-.','ه':'..-','و':'.--','ي':'..'};
+        const REV_EN = {}; const REV_AR = {};
+        Object.keys(LIB).forEach(k => { if(/[A-Z]/.test(k)) REV_EN[LIB[k]] = k; else if(k!==' ') REV_AR[LIB[k]] = k; });
+
+        let peer = new Peer();
+        let myRooms = {}; 
+        let currentActiveRoomKey = null;
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        window.addEventListener('load', () => {
+            updateUI();
+            setTimeout(() => ting(), 800);
+            setTimeout(() => document.getElementById('splash-screen').style.display = 'none', 2000);
+        });
+
+        function ting() {
+            let o = audioCtx.createOscillator(); let g = audioCtx.createGain();
+            o.type='sine'; o.frequency.setValueAtTime(1400, audioCtx.currentTime);
+            o.connect(g); g.connect(audioCtx.destination);
+            o.start(); g.gain.setValueAtTime(0.05, audioCtx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.4);
+            o.stop(audioCtx.currentTime + 0.4);
+        }
+
+        function toggleTheme() {
+            const t = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', t);
+            localStorage.setItem('morse-theme', t);
+        }
+        if(localStorage.getItem('morse-theme') === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+
+        peer.on('open', id => { document.getElementById('display-my-id').innerText = id; checkDeepLink(); });
+
+        peer.on('connection', conn => {
+            conn.on('data', data => {
+                if(data.type === 'JOIN_REQ') {
+                    const room = myRooms[data.roomKey];
+                    if(room && room.role === 'HOST') {
+                        room.conns.push(conn);
+                        conn.send({type: 'JOIN_ACCEPT', name: room.name, policy: room.policy, key: room.key});
+                        renderLobby();
+                    }
+                } else if (data.type === 'MSG') handleIncomingMsg(data);
+            });
+        });
+
+        function createNewRoom() {
+            const name = document.getElementById('room-name').value || "Morse Room";
+            const policy = document.getElementById('room-policy').value;
+            const key = Math.floor(100000 + Math.random() * 900000).toString();
+            myRooms[key] = { name, policy, key, role: 'HOST', conns: [], messages: [] };
+            renderLobby(); enterRoom(key);
+        }
+
+        function joinRemoteRoom() {
+            const peerId = document.getElementById('join-peer-id').value;
+            const key = document.getElementById('join-room-key').value;
+            if(!peerId || !key) return;
+            const conn = peer.connect(peerId);
+            conn.on('open', () => conn.send({type: 'JOIN_REQ', roomKey: key}));
+            conn.on('data', data => {
+                if(data.type === 'JOIN_ACCEPT') {
+                    myRooms[data.key] = { name: data.name, policy: data.policy, key: data.key, role: 'GUEST', conns: [conn], messages: [] };
+                    renderLobby(); enterRoom(data.key);
+                } else if (data.type === 'MSG') handleIncomingMsg(data);
+            });
+        }
+
+        function renderLobby() {
+            const container = document.getElementById('my-channels');
+            document.querySelectorAll('.room-entry').forEach(e => e.remove());
+            Object.values(myRooms).forEach(room => {
+                const div = document.createElement('div');
+                div.className = 'room-entry';
+                div.innerHTML = `
+                    <div style="margin-bottom:10px;">
+                        <span class="badge ${room.role==='HOST'?'badge-host':'badge-guest'}">${room.role}</span> <b>${room.name}</b> <span class="key-tag">${room.key}</span>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                        <button onclick="enterRoom('${room.key}')" style="flex:1.5; background:var(--primary); color:var(--bg); border:none; padding:10px; border-radius:10px; font-weight:bold; font-family:'Outfit';">${i18n[currentLang].nav_chat}</button>
+                        <button onclick="copyInvite('${room.key}')" style="flex:1; background:var(--accent); color:var(--primary); border:none; padding:10px; border-radius:10px; font-weight:bold; font-family:'Outfit';">LINK</button>
+                        <button onclick="leaveRoom('${room.key}')" style="background:var(--err); color:white; border:none; padding:10px; border-radius:10px;">X</button>
+                    </div>`;
+                container.appendChild(div);
+            });
+        }
+
+        function copyInvite(key) {
+            const room = myRooms[key];
+            const url = new URL(window.location.href);
+            url.searchParams.set('h', document.getElementById('display-my-id').innerText);
+            url.searchParams.set('k', room.key);
+            navigator.clipboard.writeText(url.href).then(() => alert(i18n[currentLang].msg_copy));
+        }
+
+        function checkDeepLink() {
+            const params = new URLSearchParams(window.location.search);
+            const h = params.get('h'), k = params.get('k');
+            if(h && k) {
+                document.getElementById('join-peer-id').value = h;
+                document.getElementById('join-room-key').value = k;
+                setTimeout(joinRemoteRoom, 2200); 
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        }
+
+        function enterRoom(key) {
+            currentActiveRoomKey = key; const room = myRooms[key];
+            document.getElementById('active-room-info').innerText = room.name;
+            document.getElementById('active-room-key-display').innerText = `Key: ${room.key}`;
+            document.getElementById('policy-indicator').innerText = room.policy;
+            document.getElementById('chat-box').innerHTML = '';
+            room.messages.forEach(m => displayMsgInBox(m));
+            showSection('chat');
+        }
+
+        function sendMessage() {
+            const room = myRooms[currentActiveRoomKey];
+            const v = document.getElementById('ui-input').value.toUpperCase();
+            if(!room || !v) return;
+            const isAr = /[\u0600-\u06FF]/.test(v);
+            if ((room.policy === 'EN' && isAr) || (room.policy === 'AR' && /[A-Z]/.test(v))) { alert(i18n[currentLang].msg_lang_err); return; }
+            const msg = /^[.\-\/ ]+$/.test(v) ? v : v.split('').map(c => LIB[c] || '').join(' ');
+            const payload = { type: 'MSG', roomKey: room.key, name: document.getElementById('user-nickname').value || "User", msg, lang: isAr ? "AR" : "EN" };
+            room.conns.forEach(c => { if(c.open) c.send(payload); });
+            room.messages.push({...payload, name: "You"});
+            displayMsgInBox({...payload, name: "You"});
+            playMorse(msg);
+            document.getElementById('ui-input').value = "";
+        }
+
+        function handleIncomingMsg(data) {
+            const room = myRooms[data.roomKey];
+            if(room) {
+                room.messages.push(data);
+                if(currentActiveRoomKey === data.roomKey) { displayMsgInBox(data); playMorse(data.msg); }
+            }
+        }
+
+        function displayMsgInBox(data) {
+            const dict = data.lang === "AR" ? REV_AR : REV_EN;
+            const decoded = data.msg.split('/').map(w=>w.trim().split(' ').map(c=>dict[c]||'?').join('')).join(' ');
+            const div = document.createElement('div');
+            div.className = 'msg';
+            div.innerHTML = `<b>${data.name}</b><br>${data.msg}<br><i style="color:var(--primary); font-weight:bold;">${decoded}</i>`;
+            const box = document.getElementById('chat-box'); box.appendChild(div); box.scrollTop = box.scrollHeight;
+        }
+
+        function doTranslate() {
+            const room = myRooms[currentActiveRoomKey];
+            const v = document.getElementById('ui-input').value.toUpperCase();
+            const p = document.getElementById('preview-box');
+            if(!v) { p.innerText = "..."; return; }
+            const bad = (room && ((room.policy === 'EN' && /[\u0600-\u06FF]/.test(v)) || (room.policy === 'AR' && /[A-Z]/.test(v))));
+            p.style.color = bad ? "var(--err)" : "var(--primary)";
+            p.innerText = bad ? i18n[currentLang].msg_lang_err : "...";
+        }
+
+        function leaveRoom(key) { delete myRooms[key]; renderLobby(); }
+        function showSection(id) {
+            document.querySelectorAll('section').forEach(s => s.classList.remove('active'));
+            document.querySelectorAll('nav button').forEach(b => b.classList.remove('active-nav'));
+            document.getElementById(id).classList.add('active');
+            document.getElementById('nav-' + id).classList.add('active-nav');
+            document.getElementById('input-panel').style.display = (id === 'chat') ? 'block' : 'none';
+        }
+        function copyToClipboard(t) { navigator.clipboard.writeText(t); alert("Copied!"); }
+
+        async function playMorse(m) {
+            const d = 60; for (let c of m) {
+                if (c === '.') { beep(d); await new Promise(r => setTimeout(r, d*2)); }
+                else if (c === '-') { beep(d*3); await new Promise(r => setTimeout(r, d*4)); }
+                else if (c === ' ') await new Promise(r => setTimeout(r, d*3));
+                else if (c === '/') await new Promise(r => setTimeout(r, d*7));
+            }
+        }
+        function beep(d) {
+            let o = audioCtx.createOscillator(); let g = audioCtx.createGain();
+            o.type='sine'; o.frequency.value=800; o.connect(g); g.connect(audioCtx.destination);
+            o.start(); g.gain.setValueAtTime(0.08, audioCtx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + d/1000);
+            o.stop(audioCtx.currentTime + d/1000);
+        }
+        function tap(c) { document.getElementById('ui-input').value += c; beep(60); doTranslate(); }
+    </script>
+</body>
+</html>
+
